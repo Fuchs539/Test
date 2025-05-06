@@ -1,0 +1,1400 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="app-title">KI-Geschichten-Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body {
+            background-color: #0a0a0a;
+            color: #ffffff;
+            font-family: 'Arial', sans-serif;
+        }
+        .sidebar {
+            background: linear-gradient(to bottom, #1a1a1a, #2a2a2a);
+            height: 100vh;
+            width: 200px;
+            position: fixed;
+            top: 0;
+            left: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .sidebar a {
+            display: block;
+            padding: 10px 0;
+            color: #ffffff;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        .sidebar a:hover {
+            color: #ff4da6;
+        }
+        .main-content {
+            margin-left: 220px;
+            padding: 20px;
+        }
+        .header {
+            background: linear-gradient(to right, #ff4da6, #4d6bff);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .rounded-textarea {
+            border-radius: 1.5rem;
+            resize: none;
+            background: #1a1a1a;
+            color: #ffffff;
+            border: 1px solid #444;
+        }
+        input[type="range"] {
+            accent-color: #ff4da6;
+        }
+        .custom-select, .custom-input, .custom-button {
+            background: #1a1a1a;
+            color: #ffffff;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 8px;
+            transition: border-color 0.3s;
+        }
+        .custom-select:focus, .custom-input:focus {
+            border-color: #ff4da6;
+            outline: none;
+        }
+        .custom-button {
+            background: linear-gradient(to right, #ff4da6, #4d6bff);
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .custom-button:hover {
+            transform: scale(1.05);
+        }
+        #loading, #result, #login-modal, #settings-modal, #customer-settings-modal, #legal-modal, #payment-modal {
+            display: none;
+        }
+        .login-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(to right, #ff4da6, #4d6bff);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            cursor: pointer;
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 24px;
+        }
+        .modal {
+            background: #1a1a1a;
+            border: 1px solid #444;
+            color: #ffffff;
+        }
+        .book-card {
+            background: #2a2a2a;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .tab {
+            background: #2a2a2a;
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: border-color 0.3s;
+            margin-right: 10px;
+        }
+        .tab.active {
+            border-bottom: 2px solid #ff4da6;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        #login-form, #logout-form {
+            display: none;
+        }
+        #login-form.active, #logout-form.active {
+            display: block;
+        }
+        footer {
+            margin-left: 220px;
+            padding: 20px;
+            background: #1a1a1a;
+            margin-top: 20px;
+        }
+        footer a {
+            color: #ff4da6;
+            margin: 0 10px;
+            text-decoration: none;
+        }
+        footer a:hover {
+            text-decoration: underline;
+        }
+        .footer-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            max-width: 640px;
+            margin: 0 auto;
+        }
+        .footer-section div {
+            margin-bottom: 10px;
+        }
+        .legal-modal-header {
+            background: linear-gradient(to right, #ff4da6, #4d6bff);
+            padding: 10px;
+            border-radius: 10px 10px 0 0;
+            text-align: center;
+        }
+        .edit-modal-content, .password-content {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div>
+            <h2 class="text-xl font-bold mb-4">Navigation</h2>
+            <a href="#" id="nav-customer-settings" class="hidden">Meine Bücher</a>
+        </div>
+        <div>
+            <a href="#" id="nav-admin-settings" class="hidden">Einstellungen</a>
+        </div>
+    </div>
+
+    <!-- Hauptbereich -->
+    <div class="main-content">
+        <!-- Header -->
+        <div class="header">
+            <h1 id="header-title" class="text-3xl font-bold">KI-Geschichten-Generator</h1>
+            <p class="mt-2">Nutze KI, um einzigartige Geschichten zu generieren!</p>
+        </div>
+
+        <!-- Anmelde-Icon -->
+        <div id="login-icon" class="login-icon" title="Anmelden"></div>
+
+        <!-- Hauptinhalt -->
+        <div class="grid grid-cols-1 gap-6 max-w-2xl mx-auto">
+            <!-- Eingabefeld für die Geschichte -->
+            <textarea 
+                id="story-input" 
+                class="rounded-textarea custom-input w-full p-4" 
+                rows="5" 
+                placeholder="Gib deine Geschichte-Idee ein, z. B. 'Löwe erkundet eine Stadt in der Zukunft mit fliegenden Autos'..."
+            ></textarea>
+            
+            <!-- Regler für die Seitenanzahl -->
+            <div>
+                <label for="page-slider" class="block text-gray-300 mb-2">
+                    Seitenanzahl: <span id="slider-value">24</span>
+                </label>
+                <input 
+                    type="range" 
+                    id="page-slider" 
+                    min="24" 
+                    max="300" 
+                    value="24" 
+                    class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                >
+                <p class="text-gray-300 mt-2">Kosten: <span id="page-cost">20,00 €</span></p>
+            </div>
+            
+            <!-- Dropdown für Buchtyp -->
+            <div>
+                <label for="book-type" class="block text-gray-300 mb-2">Buchtyp auswählen:</label>
+                <select 
+                    id="book-type" 
+                    class="custom-select w-full p-2"
+                >
+                    <option value="kinderbuch" data-pages="24" data-price="20.00" selected>Kinderbuch (24 Seiten) - 20,00 €</option>
+                    <option value="witzebuch" data-pages="40" data-price="24.00">Witzebuch (30–50 Seiten) - 24,00 €</option>
+                    <option value="buchautor" data-pages="60" data-price="40.00">Buchautor (60 Seiten) - 40,00 €</option>
+                    <option value="journalist" data-pages="70" data-price="48.00">Journalist (70 Seiten) - 48,00 €</option>
+                    <option value="student" data-pages="300" data-price="60.00">Studentklausur (300 Seiten) - 60,00 €</option>
+                </select>
+            </div>
+            
+            <!-- Absenden-Button -->
+            <button 
+                id="submit-btn" 
+                class="custom-button w-full"
+            >
+                Absenden
+            </button>
+            
+            <!-- Ladeanzeige -->
+            <div id="loading" class="text-center text-gray-300">
+                <svg class="animate-spin h-5 w-5 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8h8a8 8 0 01-16 0z"></path>
+                </svg>
+                Generiere Geschichte...
+            </div>
+            
+            <!-- Ergebnisbereich -->
+            <div id="result" class="bg-gray-800 p-4 rounded-lg">
+                <h2 class="text-lg font-semibold mb-2">Deine generierte Geschichte</h2>
+                <p id="story-output" class="text-gray-300"></p>
+                <div class="mt-4">
+                    <p class="text-gray-300 mb-2">Kaufe dein Buch für <span id="final-price">20,00 €</span>, um das PDF herunterzuladen!</p>
+                    <button 
+                        id="buy-btn" 
+                        class="custom-button w-full"
+                        onclick="openPaymentModal()"
+                    >
+                        Jetzt für <span id="buy-btn-price">20,00 €</span> kaufen
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer>
+            <div class="footer-section">
+                <div id="footer-links" class="flex justify-center">
+                    <a href="#" id="footer-terms" class="mx-2" onclick="openLegalModal('terms'); return false;">AGBs</a> |
+                    <a href="#" id="footer-privacy" class="mx-2" onclick="openLegalModal('privacy'); return false;">Datenschutz</a> |
+                    <a href="#" id="footer-revocation" class="mx-2" onclick="openLegalModal('revocation'); return false;">Widerrufsrecht</a> |
+                    <a href="#" id="footer-imprint" class="mx-2" onclick="openLegalModal('imprint'); return false;">Impressum</a>
+                </div>
+                <div id="footer-phone" class="mt-2 text-center"></div>
+                <div class="mt-2 flex justify-center">
+                    <a href="#" id="footer-instagram" target="_blank" class="mx-2">Instagram</a>
+                    <a href="#" id="footer-tiktok" target="_blank" class="mx-2">TikTok</a>
+                    <a href="#" id="footer-youtube" target="_blank" class="mx-2">YouTube</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Anmelde-Modal -->
+    <div id="login-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center">
+        <div class="modal p-6 rounded-lg w-full max-w-md">
+            <h2 class="text-xl font-bold mb-4">Anmelden</h2>
+            <p id="login-message" class="text-red-400 mb-4 hidden">Bitte melde dich an!</p>
+            <div id="login-form" class="active">
+                <div class="mb-4">
+                    <label class="text-gray-300 mb-2 block">Anmeldetyp:</label>
+                    <div>
+                        <input type="radio" id="login-customer" name="login-type" value="customer" checked class="mr-2">
+                        <label for="login-customer" class="mr-4">Kunde</label>
+                        <input type="radio" id="login-admin" name="login-type" value="admin" class="mr-2">
+                        <label for="login-admin">Admin</label>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="text-gray-300 mb-2 block">Icon auswählen:</label>
+                    <select id="user-icon" class="custom-select w-full p-2">
+                        <option value="🐶">Hund</option>
+                        <option value="🐱">Katze</option>
+                        <option value="🐺">Wolf</option>
+                        <option value="🦊">Fuchs</option>
+                    </select>
+                </div>
+                <div class="mb-4">
+                    <input 
+                        id="email" 
+                        type="email" 
+                        placeholder="E-Mail-Adresse" 
+                        class="custom-input w-full p-2"
+                    >
+                </div>
+                <div class="mb-4">
+                    <input 
+                        id="password" 
+                        type="password" 
+                        placeholder="Passwort" 
+                        class="custom-input w-full p-2"
+                    >
+                </div>
+                <div class="mb-4">
+                    <input 
+                        id="admin-key" 
+                        type="text" 
+                        placeholder="Admin-Schlüssel (nur für Admin)" 
+                        class="custom-input w-full p-2 hidden"
+                    >
+                </div>
+                <button 
+                    id="login-btn" 
+                    class="custom-button w-full mb-2"
+                >
+                    Anmelden
+                </button>
+            </div>
+            <div id="logout-form">
+                <p class="text-gray-300 mb-4">Du bist bereits angemeldet.</p>
+                <button 
+                    id="logout-btn" 
+                    class="custom-button w-full mb-2"
+                >
+                    Abmelden
+                </button>
+            </div>
+            <button 
+                id="close-login-btn" 
+                class="custom-button w-full bg-gray-700 hover:bg-gray-600"
+            >
+                Schließen
+            </button>
+        </div>
+    </div>
+
+    <!-- Zahlungs-Modal -->
+    <div id="payment-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center">
+        <div class="modal p-6 rounded-lg w-full max-w-md">
+            <h2 class="text-xl font-bold mb-4">Zahlungsmethode auswählen</h2>
+            <div class="mb-4">
+                <label for="payment-method" class="text-gray-300 mb-2 block">Zahlungsmethode:</label>
+                <select id="payment-method" class="custom-select w-full p-2">
+                    <option value="credit-card">Kreditkarte</option>
+                </select>
+            </div>
+            <button 
+                id="confirm-payment-btn" 
+                class="custom-button w-full mb-2"
+            >
+                Zahlung bestätigen (<span id="payment-modal-price">20,00 €</span>)
+            </button>
+            <button 
+                id="close-payment-btn" 
+                class="custom-button w-full bg-gray-700 hover:bg-gray-600"
+            >
+                Schließen
+            </button>
+        </div>
+    </div>
+
+    <!-- Admin-Einstellungen-Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center">
+        <div class="modal p-6 rounded-lg w-full max-w-xl">
+            <h2 class="text-xl font-bold mb-4">Einstellungen</h2>
+            <div id="revenue-content" class="tab-content active">
+                <p><strong>Gesamtumsatz:</strong> <span id="total-revenue">0€</span></p>
+                <p><strong>Umsatz aktueller Monat:</strong> <span id="current-month-revenue">0€</span></p>
+                <p><strong>Umsatz letzter Monat:</strong> <span id="last-month-revenue">0€</span></p>
+            </div>
+            <div id="analytics-content" class="tab-content">
+                <div class="mb-4">
+                    <p><strong>Gesamtumsatz:</strong> <span id="total-revenue-analytics">0€</span></p>
+                    <p><strong>Umsatz aktueller Monat:</strong> <span id="current-month-revenue-analytics">0€</span></p>
+                    <p><strong>Umsatz letzter Monat:</strong> <span id="last-month-revenue-analytics">0€</span></p>
+                    <p><strong>Tagesumsatz:</strong> <span id="daily-revenue">0€</span></p>
+                </div>
+            </div>
+            <div id="api-content" class="tab-content">
+                <div class="mb-4">
+                    <label for="openai-key" class="text-gray-300 mb-2 block">OpenAI API-Schlüssel:</label>
+                    <div class="flex items-center">
+                        <input 
+                            id="openai-key" 
+                            type="text" 
+                            placeholder="OpenAI API-Schlüssel eingeben" 
+                            class="custom-input w-full p-2 mr-2"
+                        >
+                        <input 
+                            type="checkbox" 
+                            id="hide-api-key" 
+                            class="mr-2"
+                        >
+                        <label for="hide-api-key" class="text-gray-300">Verbergen</label>
+                    </div>
+                    <div class="mt-2 flex items-center">
+                        <input 
+                            type="checkbox" 
+                            id="enable-api-key" 
+                            class="mr-2"
+                        >
+                        <label for="enable-api-key" class="text-gray-300">Aktivieren</label>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label for="stripe-key" class="text-gray-300 mb-2 block">SmileStripe API-Schlüssel:</label>
+                    <div class="flex items-center">
+                        <input 
+                            id="stripe-key" 
+                            type="text" 
+                            placeholder="SmileStripe API-Schlüssel eingeben" 
+                            class="custom-input w-full p-2 mr-2"
+                        >
+                        <input 
+                            type="checkbox" 
+                            id="hide-stripe-key" 
+                            class="mr-2"
+                        >
+                        <label for="hide-stripe-key" class="text-gray-300">Verbergen</label>
+                    </div>
+                    <div class="mt-2 flex items-center">
+                        <input 
+                            type="checkbox" 
+                            id="enable-stripe-key" 
+                            class="mr-2"
+                        >
+                        <label for="enable-stripe-key" class="text-gray-300">Aktivieren</label>
+                    </div>
+                </div>
+            </div>
+            <div id="edit-content" class="tab-content edit-modal-content">
+                <div class="mb-2">
+                    <label for="shop-name" class="text-gray-300 mb-1 block">Shop-Name:</label>
+                    <input 
+                        id="shop-name" 
+                        type="text" 
+                        placeholder="Shop-Name eingeben" 
+                        class="custom-input w-full p-2"
+                        value="KI-Geschichten-Generator"
+                    >
+                </div>
+                <div class="mb-2">
+                    <label for="terms" class="text-gray-300 mb-1 block">AGBs:</label>
+                    <textarea 
+                        id="terms" 
+                        placeholder="AGBs eingeben" 
+                        class="custom-input w-full p-2"
+                        rows="2"
+                    ></textarea>
+                </div>
+                <div class="mb-2">
+                    <label for="privacy" class="text-gray-300 mb-1 block">Datenschutz:</label>
+                    <textarea 
+                        id="privacy" 
+                        placeholder="Datenschutz eingeben" 
+                        class="custom-input w-full p-2"
+                        rows="2"
+                    ></textarea>
+                </div>
+                <div class="mb-2">
+                    <label for="revocation" class="text-gray-300 mb-1 block">Widerrufsrecht:</label>
+                    <textarea 
+                        id="revocation" 
+                        placeholder="Widerrufsrecht eingeben" 
+                        class="custom-input w-full p-2"
+                        rows="2"
+                    ></textarea>
+                </div>
+                <div class="mb-2">
+                    <label for="imprint" class="text-gray-300 mb-1 block">Impressum:</label>
+                    <textarea 
+                        id="imprint" 
+                        placeholder="Impressum eingeben" 
+                        class="custom-input w-full p-2"
+                        rows="2"
+                    ></textarea>
+                </div>
+                <div class="mb-2">
+                    <label for="phone" class="text-gray-300 mb-1 block">Telefonnummer:</label>
+                    <input 
+                        id="phone" 
+                        type="text" 
+                        placeholder="Telefonnummer eingeben" 
+                        class="custom-input w-full p-2"
+                    >
+                </div>
+                <div class="mb-2">
+                    <label for="instagram" class="text-gray-300 mb-1 block">Instagram-Link:</label>
+                    <input 
+                        id="instagram" 
+                        type="text" 
+                        placeholder="Instagram-Link eingeben" 
+                        class="custom-input w-full p-2"
+                    >
+                </div>
+                <div class="mb-2">
+                    <label for="tiktok" class="text-gray-300 mb-1 block">TikTok-Link:</label>
+                    <input 
+                        id="tiktok" 
+                        type="text" 
+                        placeholder="TikTok-Link eingeben" 
+                        class="custom-input w-full p-2"
+                    >
+                </div>
+                <div class="mb-2">
+                    <label for="youtube" class="text-gray-300 mb-1 block">YouTube-Link:</label>
+                    <input 
+                        id="youtube" 
+                        type="text" 
+                        placeholder="YouTube-Link eingeben" 
+                        class="custom-input w-full p-2"
+                    >
+                </div>
+                <button 
+                    id="cancel-edit-btn" 
+                    class="custom-button w-full bg-gray-700 hover:bg-gray-600 mt-2"
+                >
+                    Verlassen
+                </button>
+            </div>
+            <div id="password-content" class="tab-content password-content">
+                <div class="mb-4">
+                    <label for="current-key" class="text-gray-300 mb-2 block">Aktueller Schlüssel:</label>
+                    <input 
+                        id="current-key" 
+                        type="text" 
+                        placeholder="Aktuellen Schlüssel eingeben" 
+                        class="custom-input w-full p-2"
+                    >
+                </div>
+                <div class="mb-4">
+                    <label for="new-key" class="text-gray-300 mb-2 block">Neuer Schlüssel:</label>
+                    <input 
+                        id="new-key" 
+                        type="text" 
+                        placeholder="Neuen Schlüssel eingeben" 
+                        class="custom-input w-full p-2"
+                    >
+                </div>
+            </div>
+            <div class="flex mt-4">
+                <button id="tab-revenue" class="tab active">Einnahmen</button>
+                <button id="tab-analytics" class="tab">Analytics</button>
+                <button id="tab-api" class="tab">API-Schlüssel</button>
+                <button id="tab-edit" class="tab">Bearbeitung</button>
+                <button id="tab-password" class="tab">Passwörter</button>
+            </div>
+            <button 
+                id="save-settings-btn" 
+                class="custom-button w-full mt-4 mb-2"
+            >
+                Speichern
+            </button>
+            <button 
+                id="close-settings-btn" 
+                class="custom-button w-full bg-gray-700 hover:bg-gray-600"
+            >
+                Schließen
+            </button>
+        </div>
+    </div>
+
+    <!-- Kunden-Einstellungen-Modal -->
+    <div id="customer-settings-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center">
+        <div class="modal p-6 rounded-lg w-full max-w-3xl">
+            <h2 class="text-xl font-bold mb-4">Meine Bücher</h2>
+            <div id="book-list"></div>
+            <button 
+                id="close-customer-settings-btn" 
+                class="custom-button w-full bg-gray-700 hover:bg-gray-600 mt-4"
+            >
+                Schließen
+            </button>
+        </div>
+    </div>
+
+    <!-- Legal-Dokumente-Modal -->
+    <div id="legal-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center">
+        <div class="modal p-6 rounded-lg w-full max-w-md">
+            <div class="legal-modal-header">
+                <h2 id="legal-modal-title" class="text-xl font-bold"></h2>
+            </div>
+            <div class="mt-4">
+                <p id="legal-modal-content" class="text-gray-300"></p>
+            </div>
+            <button 
+                id="close-legal-modal-btn" 
+                class="custom-button w-full bg-gray-700 hover:bg-gray-600 mt-4"
+            >
+                Schließen
+            </button>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+
+        const slider = document.getElementById('page-slider');
+        const sliderValue = document.getElementById('slider-value');
+        const pageCost = document.getElementById('page-cost');
+        const bookType = document.getElementById('book-type');
+        const submitBtn = document.getElementById('submit-btn');
+        const buyBtn = document.getElementById('buy-btn');
+        const finalPrice = document.getElementById('final-price');
+        const buyBtnPrice = document.getElementById('buy-btn-price');
+        const paymentModalPrice = document.getElementById('payment-modal-price');
+        const storyInput = document.getElementById('story-input');
+        const storyOutput = document.getElementById('story-output');
+        const loading = document.getElementById('loading');
+        const result = document.getElementById('result');
+        const loginIcon = document.getElementById('login-icon');
+        const loginModal = document.getElementById('login-modal');
+        const paymentModal = document.getElementById('payment-modal');
+        const settingsModal = document.getElementById('settings-modal');
+        const customerSettingsModal = document.getElementById('customer-settings-modal');
+        const legalModal = document.getElementById('legal-modal');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const adminKeyInput = document.getElementById('admin-key');
+        const userIcon = document.getElementById('user-icon');
+        const loginBtn = document.getElementById('login-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+        const closeLoginBtn = document.getElementById('close-login-btn');
+        const confirmPaymentBtn = document.getElementById('confirm-payment-btn');
+        const closePaymentBtn = document.getElementById('close-payment-btn');
+        const paymentMethod = document.getElementById('payment-method');
+        const saveSettingsBtn = document.getElementById('save-settings-btn');
+        const closeSettingsBtn = document.getElementById('close-settings-btn');
+        const closeCustomerSettingsBtn = document.getElementById('close-customer-settings-btn');
+        const closeLegalModalBtn = document.getElementById('close-legal-modal-btn');
+        const openaiKeyInput = document.getElementById('openai-key');
+        const stripeKeyInput = document.getElementById('stripe-key');
+        const hideApiKeyCheckbox = document.getElementById('hide-api-key');
+        const hideStripeKeyCheckbox = document.getElementById('hide-stripe-key');
+        const enableApiKeyCheckbox = document.getElementById('enable-api-key');
+        const enableStripeKeyCheckbox = document.getElementById('enable-stripe-key');
+        const navCustomerSettings = document.getElementById('nav-customer-settings');
+        const navAdminSettings = document.getElementById('nav-admin-settings');
+        const bookList = document.getElementById('book-list');
+        const tabRevenue = document.getElementById('tab-revenue');
+        const tabAnalytics = document.getElementById('tab-analytics');
+        const tabApi = document.getElementById('tab-api');
+        const tabEdit = document.getElementById('tab-edit');
+        const tabPassword = document.getElementById('tab-password');
+        const revenueContent = document.getElementById('revenue-content');
+        const analyticsContent = document.getElementById('analytics-content');
+        const apiContent = document.getElementById('api-content');
+        const editContent = document.getElementById('edit-content');
+        const passwordContent = document.getElementById('password-content');
+        const cancelEditBtn = document.getElementById('cancel-edit-btn');
+        const shopNameInput = document.getElementById('shop-name');
+        const termsInput = document.getElementById('terms');
+        const privacyInput = document.getElementById('privacy');
+        const revocationInput = document.getElementById('revocation');
+        const imprintInput = document.getElementById('imprint');
+        const phoneInput = document.getElementById('phone');
+        const instagramInput = document.getElementById('instagram');
+        const tiktokInput = document.getElementById('tiktok');
+        const youtubeInput = document.getElementById('youtube');
+        const loginForm = document.getElementById('login-form');
+        const logoutForm = document.getElementById('logout-form');
+        const headerTitle = document.getElementById('header-title');
+        const footerTerms = document.getElementById('footer-terms');
+        const footerPrivacy = document.getElementById('footer-privacy');
+        const footerRevocation = document.getElementById('footer-revocation');
+        const footerImprint = document.getElementById('footer-imprint');
+        const footerPhone = document.getElementById('footer-phone');
+        const footerInstagram = document.getElementById('footer-instagram');
+        const footerTiktok = document.getElementById('footer-tiktok');
+        const footerYoutube = document.getElementById('footer-youtube');
+        const legalModalTitle = document.getElementById('legal-modal-title');
+        const legalModalContent = document.getElementById('legal-modal-content');
+        const currentKeyInput = document.getElementById('current-key');
+        const newKeyInput = document.getElementById('new-key');
+
+        // Buchtypen-Konfiguration
+        const bookTypes = {
+            kinderbuch: { pages: 24, min: 24, max: 300, price: 20.00 },
+            witzebuch: { pages: 40, min: 30, max: 300, price: 24.00 },
+            buchautor: { pages: 60, min: 60, max: 300, price: 40.00 },
+            journalist: { pages: 70, min: 70, max: 300, price: 48.00 },
+            student: { pages: 300, min: 300, max: 300, price: 60.00 }
+        };
+
+        // Funktion zur Berechnung des Preises basierend auf der Seitenanzahl
+        function calculatePrice(pages) {
+            if (pages === 300) return 80.00;
+            if (pages >= 250 && pages <= 299) return 75.00;
+            if (pages >= 200 && pages <= 249) return 70.00;
+            if (pages >= 150 && pages <= 199) return 65.00;
+            if (pages >= 100 && pages <= 149) return 60.00;
+            if (pages >= 50 && pages <= 99) return 55.00;
+            if (pages >= 30 && pages <= 49) return 50.00;
+            return 20.00; // Für Kinderbuch (24 Seiten)
+        }
+
+        // Funktion zum Aktualisieren der Preisanzeige
+        function updatePriceDisplay() {
+            const pages = parseInt(slider.value);
+            const selectedType = bookType.value;
+            const config = bookTypes[selectedType];
+            let price;
+
+            // Wenn der Benutzer die Seitenanzahl manuell anpasst, hat der Regler Vorrang
+            if (pages !== config.pages) {
+                price = calculatePrice(pages);
+            } else {
+                price = config.price;
+            }
+
+            pageCost.textContent = `${price.toFixed(2)} €`;
+            finalPrice.textContent = `${price.toFixed(2)} €`;
+            buyBtnPrice.textContent = `${price.toFixed(2)} €`;
+            paymentModalPrice.textContent = `${price.toFixed(2)} €`;
+            return price;
+        }
+
+        // Slider aktualisieren
+        function updateSlider() {
+            const selectedType = bookType.value;
+            const config = bookTypes[selectedType];
+            slider.min = config.min;
+            slider.max = config.max;
+            slider.value = config.pages;
+            sliderValue.textContent = slider.value;
+            updatePriceDisplay();
+        }
+
+        // Initiale Konfiguration
+        updateSlider();
+
+        // Buchtyp-Änderung
+        bookType.addEventListener('change', updateSlider);
+
+        // Slider-Änderung
+        slider.addEventListener('input', () => {
+            sliderValue.textContent = slider.value;
+            updatePriceDisplay();
+        });
+
+        // Anmeldetyp-Änderung
+        function toggleAdminKey() {
+            const loginCustomer = document.getElementById('login-customer');
+            adminKeyInput.classList.toggle('hidden', loginCustomer.checked);
+        }
+
+        document.getElementById('login-customer').addEventListener('change', toggleAdminKey);
+        document.getElementById('login-admin').addEventListener('change', toggleAdminKey);
+
+        // Zahlungsmodal öffnen
+        function openPaymentModal() {
+            paymentModal.style.display = 'flex';
+        }
+
+        closePaymentBtn.addEventListener('click', () => {
+            paymentModal.style.display = 'none';
+        });
+
+        // Anmeldung
+        let isLoggedIn = false;
+        let isAdmin = false;
+        let selectedIcon = '';
+        let books = [];
+        let appSettings = {
+            shopName: "KI-Geschichten-Generator",
+            terms: "",
+            privacy: "",
+            revocation: "",
+            imprint: "",
+            phone: "",
+            instagram: "",
+            tiktok: "",
+            youtube: "",
+            stripeKey: ""
+        };
+        let ADMIN_SECRET_KEY = '123'; // Admin-Schlüssel
+        let isApiKeyEnabled = false;
+        let isStripeKeyEnabled = false;
+        let totalRevenue = 0;
+        let currentMonthRevenue = 0;
+        let lastMonthRevenue = 0;
+        let dailyRevenue = 0;
+
+        loginIcon.addEventListener('click', () => {
+            if (isLoggedIn) {
+                loginModal.style.display = 'flex';
+                loginForm.classList.remove('active');
+                logoutForm.classList.add('active');
+                document.getElementById('login-message').classList.add('hidden');
+            } else {
+                loginModal.style.display = 'flex';
+                loginForm.classList.add('active');
+                logoutForm.classList.remove('active');
+                document.getElementById('login-message').classList.add('hidden');
+            }
+        });
+
+        closeLoginBtn.addEventListener('click', () => {
+            loginModal.style.display = 'none';
+        });
+
+        loginBtn.addEventListener('click', () => {
+            const email = emailInput.value.trim();
+            const password = passwordInput.value.trim();
+            const adminKey = adminKeyInput.value.trim();
+            const isAdminLogin = document.getElementById('login-admin').checked;
+            selectedIcon = userIcon.value;
+
+            if (!email || !password) {
+                alert('Bitte gib E-Mail und Passwort ein!');
+                return;
+            }
+
+            if (isAdminLogin && !adminKey) {
+                alert('Bitte gib den Admin-Schlüssel ein!');
+                return;
+            }
+
+            // Simulierte Anmeldung
+            if (isAdminLogin && adminKey === ADMIN_SECRET_KEY) {
+                isAdmin = true;
+                alert('Admin-Anmeldung erfolgreich!');
+                navCustomerSettings.classList.add('hidden');
+                navAdminSettings.classList.remove('hidden');
+                settingsModal.style.display = 'flex';
+            } else if (!isAdminLogin) {
+                isAdmin = false;
+                alert('Kunden-Anmeldung erfolgreich!');
+                navCustomerSettings.classList.remove('hidden');
+                navAdminSettings.classList.add('hidden');
+            } else {
+                alert('Ungültiger Admin-Schlüssel!');
+                return;
+            }
+
+            isLoggedIn = true;
+            loginIcon.textContent = selectedIcon;
+            loginModal.style.display = 'none';
+        });
+
+        logoutBtn.addEventListener('click', () => {
+            isLoggedIn = false;
+            isAdmin = false;
+            selectedIcon = '';
+            loginIcon.textContent = '';
+            navCustomerSettings.classList.add('hidden');
+            navAdminSettings.classList.add('hidden');
+            loginModal.style.display = 'none';
+            alert('Erfolgreich abgemeldet!');
+        });
+
+        // Tab-Navigation
+        tabRevenue.addEventListener('click', () => {
+            tabRevenue.classList.add('active');
+            tabAnalytics.classList.remove('active');
+            tabApi.classList.remove('active');
+            tabEdit.classList.remove('active');
+            tabPassword.classList.remove('active');
+            revenueContent.classList.add('active');
+            analyticsContent.classList.remove('active');
+            apiContent.classList.remove('active');
+            editContent.classList.remove('active');
+            passwordContent.classList.remove('active');
+        });
+
+        tabAnalytics.addEventListener('click', () => {
+            tabRevenue.classList.remove('active');
+            tabAnalytics.classList.add('active');
+            tabApi.classList.remove('active');
+            tabEdit.classList.remove('active');
+            tabPassword.classList.remove('active');
+            revenueContent.classList.remove('active');
+            analyticsContent.classList.add('active');
+            apiContent.classList.remove('active');
+            editContent.classList.remove('active');
+            passwordContent.classList.remove('active');
+        });
+
+        tabApi.addEventListener('click', () => {
+            tabRevenue.classList.remove('active');
+            tabAnalytics.classList.remove('active');
+            tabApi.classList.add('active');
+            tabEdit.classList.remove('active');
+            tabPassword.classList.remove('active');
+            revenueContent.classList.remove('active');
+            analyticsContent.classList.remove('active');
+            apiContent.classList.add('active');
+            editContent.classList.remove('active');
+            passwordContent.classList.remove('active');
+        });
+
+        tabEdit.addEventListener('click', () => {
+            tabRevenue.classList.remove('active');
+            tabAnalytics.classList.remove('active');
+            tabApi.classList.remove('active');
+            tabEdit.classList.add('active');
+            tabPassword.classList.remove('active');
+            revenueContent.classList.remove('active');
+            analyticsContent.classList.remove('active');
+            apiContent.classList.remove('active');
+            editContent.classList.add('active');
+            passwordContent.classList.remove('active');
+        });
+
+        tabPassword.addEventListener('click', () => {
+            tabRevenue.classList.remove('active');
+            tabAnalytics.classList.remove('active');
+            tabApi.classList.remove('active');
+            tabEdit.classList.remove('active');
+            tabPassword.classList.add('active');
+            revenueContent.classList.remove('active');
+            analyticsContent.classList.remove('active');
+            apiContent.classList.remove('active');
+            editContent.classList.remove('active');
+            passwordContent.classList.add('active');
+        });
+
+        hideApiKeyCheckbox.addEventListener('change', () => {
+            openaiKeyInput.type = hideApiKeyCheckbox.checked ? 'password' : 'text';
+        });
+
+        hideStripeKeyCheckbox.addEventListener('change', () => {
+            stripeKeyInput.type = hideStripeKeyCheckbox.checked ? 'password' : 'text';
+        });
+
+        enableApiKeyCheckbox.addEventListener('change', () => {
+            isApiKeyEnabled = enableApiKeyCheckbox.checked;
+            if (!isApiKeyEnabled) {
+                alert('OpenAI API-Schlüssel deaktiviert. Die KI kann nicht verwendet werden, bis der Schlüssel aktiviert wird.');
+            } else {
+                alert('OpenAI API-Schlüssel aktiviert! Die KI kann jetzt verwendet werden.');
+            }
+        });
+
+        enableStripeKeyCheckbox.addEventListener('change', () => {
+            isStripeKeyEnabled = enableStripeKeyCheckbox.checked;
+            if (!isStripeKeyEnabled) {
+                alert('SmileStripe API-Schlüssel deaktiviert. Kreditkartenzahlungen sind nicht möglich, bis der Schlüssel aktiviert wird.');
+            } else {
+                alert('SmileStripe API-Schlüssel aktiviert! Kreditkartenzahlungen sind jetzt möglich.');
+            }
+        });
+
+        cancelEditBtn.addEventListener('click', () => {
+            editContent.classList.remove('active');
+            tabEdit.classList.remove('active');
+            tabRevenue.classList.add('active');
+            revenueContent.classList.add('active');
+        });
+
+        saveSettingsBtn.addEventListener('click', () => {
+            const openaiKey = openaiKeyInput.value.trim();
+            const stripeKey = stripeKeyInput.value.trim();
+            const currentKey = currentKeyInput.value.trim();
+            const newKey = newKeyInput.value.trim();
+
+            if (openaiKey) {
+                alert('OpenAI API-Schlüssel gespeichert! (Simulation)');
+            }
+
+            if (stripeKey) {
+                alert('SmileStripe API-Schlüssel gespeichert! (Simulation)');
+            }
+
+            if (currentKey && newKey) {
+                if (currentKey === ADMIN_SECRET_KEY) {
+                    ADMIN_SECRET_KEY = newKey;
+                    alert('Admin-Schlüssel erfolgreich geändert! Bitte melde dich erneut an.');
+                    isLoggedIn = false;
+                    isAdmin = false;
+                    selectedIcon = '';
+                    loginIcon.textContent = '';
+                    navCustomerSettings.classList.add('hidden');
+                    navAdminSettings.classList.add('hidden');
+                    settingsModal.style.display = 'none';
+                    loginModal.style.display = 'flex';
+                    loginForm.classList.add('active');
+                    logoutForm.classList.remove('active');
+                } else {
+                    alert('Aktueller Schlüssel ist falsch!');
+                    return;
+                }
+            }
+
+            appSettings.shopName = shopNameInput.value.trim();
+            appSettings.terms = termsInput.value.trim();
+            appSettings.privacy = privacyInput.value.trim();
+            appSettings.revocation = revocationInput.value.trim();
+            appSettings.imprint = imprintInput.value.trim();
+            appSettings.phone = phoneInput.value.trim();
+            appSettings.instagram = instagramInput.value.trim();
+            appSettings.tiktok = tiktokInput.value.trim();
+            appSettings.youtube = youtubeInput.value.trim();
+            appSettings.stripeKey = stripeKey;
+
+            footerPhone.textContent = appSettings.phone ? `Telefon: ${appSettings.phone}` : '';
+            footerInstagram.href = appSettings.instagram || '#';
+            footerTiktok.href = appSettings.tiktok || '#';
+            footerYoutube.href = appSettings.youtube || '#';
+
+            alert('Einstellungen gespeichert! (Simulation)');
+            settingsModal.style.display = 'none';
+        });
+
+        closeSettingsBtn.addEventListener('click', () => {
+            settingsModal.style.display = 'none';
+        });
+
+        navAdminSettings.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (isAdmin) {
+                settingsModal.style.display = 'flex';
+            }
+        });
+
+        // Kunden-Einstellungen
+        navCustomerSettings.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (isLoggedIn && !isAdmin) {
+                customerSettingsModal.style.display = 'flex';
+                displayBooks();
+            }
+        });
+
+        closeCustomerSettingsBtn.addEventListener('click', () => {
+            customerSettingsModal.style.display = 'none';
+        });
+
+        // Legal Modal
+        function openLegalModal(type) {
+            const titles = {
+                terms: 'Allgemeine Geschäftsbedingungen (AGBs)',
+                privacy: 'Datenschutz',
+                revocation: 'Widerrufsrecht',
+                imprint: 'Impressum'
+            };
+
+            legalModalTitle.textContent = titles[type] || 'Rechtsdokument';
+            legalModalContent.textContent = appSettings[type] || 'Keine Inhalte verfügbar.';
+            legalModal.style.display = 'flex';
+        }
+
+        closeLegalModalBtn.addEventListener('click', () => {
+            legalModal.style.display = 'none';
+        });
+
+        // Geschichte absenden und generieren
+        submitBtn.addEventListener('click', async () => {
+            if (!isLoggedIn) {
+                loginModal.style.display = 'flex';
+                loginForm.classList.add('active');
+                logoutForm.classList.remove('active');
+                document.getElementById('login-message').classList.remove('hidden');
+                return;
+            }
+
+            if (!isApiKeyEnabled) {
+                alert('Der OpenAI API-Schlüssel ist deaktiviert. Bitte aktiviere ihn in den Einstellungen.');
+                return;
+            }
+
+            if (!isStripeKeyEnabled) {
+                alert('Der SmileStripe API-Schlüssel ist deaktiviert. Bitte aktiviere ihn in den Einstellungen.');
+                return;
+            }
+
+            const inputText = storyInput.value.trim();
+            const pageCount = parseInt(slider.value);
+            const selectedType = bookType.value;
+
+            if (!inputText) {
+                alert('Bitte gib eine Geschichte-Idee ein!');
+                return;
+            }
+
+            loading.style.display = 'block';
+            result.style.display = 'none';
+
+            // OpenAI-API-Aufruf
+            try {
+                const generatedStory = await generateStory(inputText, pageCount, selectedType);
+                loading.style.display = 'none';
+                storyOutput.textContent = generatedStory;
+                result.style.display = 'block';
+            } catch (error) {
+                loading.style.display = 'none';
+                alert('Fehler beim Generieren der Geschichte: ' + error.message);
+            }
+        });
+
+        // Funktion zum Generieren der Geschichte mit OpenAI
+        async function generateStory(inputText, pageCount, bookType) {
+            const openaiKey = openaiKeyInput.value.trim();
+            if (!openaiKey) {
+                throw new Error('OpenAI API-Schlüssel fehlt! Bitte im Admin-Bereich eingeben.');
+            }
+
+            // Annahme: ~250 Wörter pro Seite für KDP-kompatible Bücher (basierend auf Standardformatierung)
+            const wordsPerPage = 250;
+            const targetWordCount = pageCount * wordsPerPage;
+            // Annahme: ~4 Token pro Wort (OpenAI-Tokenisierung)
+            const targetTokens = targetWordCount * 4;
+
+            // In einer echten Umgebung würde dies eine API-Anfrage sein
+            /*
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${openaiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'gpt-4',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `Du bist ein professioneller Autor, spezialisiert auf KDP-kompatible Bücher. Erstelle eine vollständige Geschichte für ein ${bookType}, die exakt ${pageCount} Seiten füllt (ca. ${targetWordCount} Wörter, basierend auf 250 Wörtern pro Seite). Die Geschichte soll klar strukturiert sein, mit Kapiteln (ca. 1 Kapitel pro 10 Seiten), und für den Druck auf Amazon KDP optimiert (A5-Format, lesbar, gut formatierbar). Der Inhalt basiert auf folgendem Input: ${inputText}. Die Geschichte soll ansprechend, kohärent und passend für das Genre des Buchtyps sein.`
+                        },
+                        { role: 'user', content: inputText }
+                    ],
+                    max_tokens: targetTokens,
+                    temperature: 0.7 // Für kreative, aber kohärente Ergebnisse
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('OpenAI API-Anfrage fehlgeschlagen: ' + response.statusText);
+            }
+
+            const data = await response.json();
+            let storyText = data.choices[0].message.content;
+
+            // Kapitelstrukturierung
+            const chapterCount = Math.ceil(pageCount / 10); // Ein Kapitel pro 10 Seiten
+            const wordsPerChapter = Math.floor(targetWordCount / chapterCount);
+            let chapters = [];
+            let currentText = storyText;
+            for (let i = 1; i <= chapterCount; i++) {
+                const chapterText = currentText.slice(0, wordsPerChapter * 5); // Annahme: 5 Zeichen pro Wort
+                chapters.push(`Kapitel ${i}\n${chapterText}\n`);
+                currentText = currentText.slice(wordsPerChapter * 5);
+            }
+            return chapters.join('\n');
+            */
+
+            // Simulierte Antwort für diese Umgebung
+            let simulatedChapters = [];
+            const chapterCount = Math.ceil(pageCount / 10); // Ein Kapitel pro 10 Seiten
+            const wordsPerChapter = Math.floor(targetWordCount / chapterCount);
+            for (let i = 1; i <= chapterCount; i++) {
+                simulatedChapters.push(
+                    `Kapitel ${i}\n` +
+                    `Dies ist ein simulierter Kapiteltext für ein ${bookType} mit ${pageCount} Seiten. ` +
+                    `Der Text basiert auf deinem Input: "${inputText}". ` +
+                    `In einer echten Anwendung würde die OpenAI-API eine kohärente Geschichte mit ca. ${wordsPerChapter} Wörtern pro Kapitel generieren, ` +
+                    `optimiert für KDP (A5-Format, ca. 250 Wörter pro Seite). `.repeat(Math.ceil(wordsPerChapter / 50)) + // Simuliert Wortanzahl
+                    `\n`
+                );
+            }
+            return simulatedChapters.join('\n');
+        }
+
+        // Zahlung bestätigen
+        confirmPaymentBtn.addEventListener('click', async () => {
+            const selectedMethod = paymentMethod.value;
+
+            if (!isStripeKeyEnabled) {
+                alert('SmileStripe API-Schlüssel ist deaktiviert. Bitte aktiviere ihn in den Einstellungen.');
+                return;
+            }
+
+            // Simulierte Zahlung
+            alert(`Zahlung mit Kreditkarte über SmileStripe simuliert! In einer echten Anwendung würde hier die Zahlung direkt an Stripe übertragen werden.`);
+
+            // Umsatz aktualisieren
+            const currentDate = new Date();
+            const currentMonth = currentDate.getMonth();
+            const currentYear = currentDate.getFullYear();
+            const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+            const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+            const price = parseFloat(finalPrice.textContent.replace(' €', ''));
+
+            totalRevenue += price;
+            if (currentMonth === new Date().getMonth() && currentYear === new Date().getFullYear()) {
+                currentMonthRevenue += price;
+            }
+            if (lastMonth === new Date().getMonth() && lastMonthYear === new Date().getFullYear()) {
+                lastMonthRevenue += price;
+            }
+            if (currentDate.toDateString() === new Date().toDateString()) {
+                dailyRevenue += price;
+            }
+
+            document.getElementById('total-revenue').textContent = `${totalRevenue.toFixed(2)}€`;
+            document.getElementById('current-month-revenue').textContent = `${currentMonthRevenue.toFixed(2)}€`;
+            document.getElementById('last-month-revenue').textContent = `${lastMonthRevenue.toFixed(2)}€`;
+            document.getElementById('total-revenue-analytics').textContent = `${totalRevenue.toFixed(2)}€`;
+            document.getElementById('current-month-revenue-analytics').textContent = `${currentMonthRevenue.toFixed(2)}€`;
+            document.getElementById('last-month-revenue-analytics').textContent = `${lastMonthRevenue.toFixed(2)}€`;
+            document.getElementById('daily-revenue').textContent = `${dailyRevenue.toFixed(2)}€`;
+
+            // PDF-Download
+            const storyText = storyOutput.textContent;
+            const selectedType = bookType.value;
+            const pageCount = parseInt(slider.value);
+            const pdfContent = generatePDFContent(storyText, selectedType, pageCount);
+            const blob = new Blob([pdfContent], { type: 'text/latex' });
+            const url = URL.createObjectURL(blob);
+            const filename = `deine_geschichte_${selectedType}_${Date.now()}.tex`;
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            // Buch zur Liste hinzufügen
+            books.push({
+                title: `Geschichte (${selectedType})`,
+                pages: pageCount,
+                file: filename,
+                content: storyText
+            });
+
+            // Modal schließen
+            paymentModal.style.display = 'none';
+
+            // "Meine Bücher" aktualisieren
+            displayBooks();
+        });
+
+        // Bücher anzeigen
+        function displayBooks() {
+            bookList.innerHTML = '';
+            books.forEach((book, index) => {
+                const bookCard = document.createElement('div');
+                bookCard.className = 'book-card';
+                bookCard.innerHTML = `
+                    <div>
+                        <h4 class="text-lg font-semibold">${book.title}</h4>
+                        <p class="text-gray-300">Seiten: ${book.pages}</p>
+                    </div>
+                    <button class="custom-button px-4" onclick="downloadBook(${index})">Download</button>
+                `;
+                bookList.appendChild(bookCard);
+            });
+        }
+
+        // Buch herunterladen
+        window.downloadBook = function(index) {
+            const book = books[index];
+            const storyText = book.content;
+            const pdfContent = generatePDFContent(storyText, book.file.split('_')[2], book.pages);
+            const blob = new Blob([pdfContent], { type: 'text/latex' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = book.file;
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+
+        // LaTeX für KDP-kompatibles PDF
+        function generatePDFContent(storyText, bookType, pageCount) {
+            const fontSize = bookType === 'kinderbuch' ? '14pt' : '12pt';
+            // Kapiteltrennung für LaTeX
+            const chapters = storyText.split('\nKapitel ').filter(ch => ch.trim());
+            const formattedChapters = chapters.map((ch, index) => {
+                if (index === 0 && !ch.startsWith('Kapitel')) {
+                    return `\\chapter{${ch.startsWith('Kapitel') ? ch.split('\n')[0] : 'Einführung'}}\n${ch.split('\n').slice(1).join('\n').replace(/\n/g, '\\\\\\par ')}`;
+                }
+                return `\\chapter{Kapitel ${ch.split('\n')[0]}}\n${ch.split('\n').slice(1).join('\n').replace(/\n/g, '\\\\\\par ')}`;
+            }).join('\n');
+
+            return `
+\\documentclass[a5paper,${fontSize}]{book}
+\\usepackage[utf8]{inputenc}
+\\usepackage[T1]{fontenc}
+\\usepackage{lmodern}
+\\usepackage{geometry}
+\\geometry{a5paper, margin=1in}
+\\usepackage{setspace}
+\\onehalfspacing
+\\usepackage{tocbibind} % Für Inhaltsverzeichnis
+\\title{Deine Geschichte}
+\\author{}
+\\date{}
+\\begin{document}
+\\frontmatter
+\\maketitle
+\\tableofcontents
+\\mainmatter
+${formattedChapters}
+\\backmatter
+\\end{document}
+            `;
+        }
+    </script>
+</body>
+</html>
