@@ -1,0 +1,899 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TubeStats</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.22.5/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://js.stripe.com/v3/"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body className="bg-[#1A1A1A] min-h-screen font-['Poppins']">
+  <div id="root"></div>
+  <script type="text/babel">
+    const LoginModal = ({ isOpen, onClose, onSubmit, type }) => {
+      const [email, setEmail] = React.useState('');
+      const [password, setPassword] = React.useState('');
+      const [error, setError] = React.useState('');
+
+      const handleSubmit = () => {
+        if (!email || !password) {
+          setError('Bitte E-Mail und Passwort eingeben.');
+          return;
+        }
+        if (!email.includes('@') || !email.includes('.')) {
+          setError('Bitte eine gültige E-Mail-Adresse eingeben.');
+          return;
+        }
+        if (password.length < 6) {
+          setError('Das Passwort muss mindestens 6 Zeichen lang sein.');
+          return;
+        }
+        setError('');
+        onSubmit(email);
+        onClose();
+      };
+
+      if (!isOpen) return null;
+
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-[#121212] p-6 rounded-lg shadow-lg w-full max-w-sm border border-gray-700">
+            <h2 className="text-xl text-white mb-4">
+              {type === 'login' ? 'Mit E-Mail anmelden' : 'Konto erstellen'}
+            </h2>
+            {error && <p className="text-red-500 mb-4">{error}</p>}
+            <input
+              type="email"
+              placeholder="E-Mail-Adresse"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full p-3 mb-4 bg-[#1A1A1A] text-white rounded-lg border border-gray-600 focus:outline-none focus:border-[#00FFFF] transition"
+            />
+            <input
+              type="password"
+              placeholder="Passwort"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full p-3 mb-4 bg-[#1A1A1A] text-white rounded-lg border border-gray-600 focus:outline-none focus:border-[#00FFFF] transition"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={onClose}
+                className="py-2 px-4 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition"
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={handleSubmit}
+                className="py-2 px-4 bg-[#00FFFF] text-black rounded-lg hover:bg-[#00CCCC] transition"
+              >
+                {type === 'login' ? 'Anmelden' : 'Registrieren'}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const TutorialModal = ({ isOpen, onClose, onSubscribe }) => {
+      // Ersetze 'DEINE_ID' durch die ID deines YouTube-Videos
+      // Beispiel: Für https://www.youtube.com/watch?v=abc123 -> 'abc123'
+      const youtubeVideoId = 'DEINE_ID';
+
+      if (!isOpen) return null;
+
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-[#121212] p-6 rounded-lg shadow-lg w-full max-w-2xl border border-gray-700">
+            <h2 className="text-xl text-white mb-4">Entdecke TubeStats!</h2>
+            <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+              <iframe
+                className="absolute top-0 left-0 w-full h-full"
+                src={`https://www.youtube.com/embed/${youtubeVideoId}`}
+                title="TubeStats Tutorial"
+                frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              ></iframe>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={onClose}
+                className="py-2 px-4 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition"
+              >
+                Schließen
+              </button>
+              <button
+                onClick={onSubscribe}
+                className="py-2 px-4 bg-[#00FFFF] text-black rounded-lg hover:bg-[#00CCCC] transition"
+              >
+                Jetzt Abo abschließen!
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const SubscriptionModal = ({ isOpen, onClose, onSelect }) => {
+      const [showPaymentModal, setShowPaymentModal] = React.useState(false);
+
+      const handleSubscribe = () => {
+        setShowPaymentModal(true);
+      };
+
+      const handlePaymentConfirm = () => {
+        onSelect('basic');
+        onClose();
+      };
+
+      if (!isOpen) return null;
+
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-[#121212] p-8 rounded-lg shadow-lg w-full max-w-4xl border border-gray-700">
+            <h2 className="text-2xl text-white text-center mb-6">Wählen Sie Ihr Abo</h2>
+            <div className="bg-[#1A1A1A] p-6 rounded-lg shadow-lg border border-gray-700">
+              <h3 className="text-xl text-white mb-4">Basis-Version – 10€/Monat</h3>
+              <ul className="text-white mb-4 list-disc pl-5">
+                <li>Kanal- und Videoanalyse</li>
+                <li>Thumbnail-Optimierung</li>
+                <li>Trendsuche und Hype-Analyse</li>
+                <li>Einnahmenschätzung und Trendvorhersage</li>
+                <li>Automatische Einnahmenschätzungen</li>
+                <li>Erweiterte Trendanalyse</li>
+                <li>Keine Werbung</li>
+              </ul>
+              <button
+                onClick={handleSubscribe}
+                className="w-full py-2 bg-[#00FFFF] text-black rounded-lg hover:bg-[#00CCCC] transition"
+              >
+                10 €/Monat abonnieren
+              </button>
+            </div>
+            <button
+              onClick={onClose}
+              className="mt-6 w-full py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition"
+            >
+              Schließen
+            </button>
+          </div>
+          <PaymentModal
+            isOpen={showPaymentModal}
+            onClose={() => setShowPaymentModal(false)}
+            plan="basic"
+            onConfirm={handlePaymentConfirm}
+          />
+        </div>
+      );
+    };
+
+    const PaymentModal = ({ isOpen, onClose, plan, onConfirm }) => {
+      const [cardNumber, setCardNumber] = React.useState('');
+      const [expiry, setExpiry] = React.useState('');
+      const [cvc, setCvc] = React.useState('');
+      const [error, setError] = React.useState('');
+
+      const handleCreditCardSubmit = () => {
+        if (!cardNumber || !expiry || !cvc) {
+          setError('Bitte alle Felder ausfüllen.');
+          return;
+        }
+        if (!/^\d{16}$/.test(cardNumber)) {
+          setError('Ungültige Kartennummer (16 Ziffern erforderlich).');
+          return;
+        }
+        if (!/^\d{2}\/\d{2}$/.test(expiry)) {
+          setError('Ungültiges Ablaufdatum (MM/YY).');
+          return;
+        }
+        if (!/^\d{3}$/.test(cvc)) {
+          setError('Ungültiger CVC (3 Ziffern erforderlich).');
+          return;
+        }
+
+        const STRIPE_API_KEY = 'YOUR_STRIPE_API_KEY_HERE';
+        console.log('Processing payment via Stripe with API Key:', STRIPE_API_KEY);
+        console.log(`Card Details: Number=${cardNumber}, Expiry=${expiry}, CVC=${cvc}`);
+
+        setError('');
+        onConfirm();
+        onClose();
+      };
+
+      if (!isOpen) return null;
+
+      return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-[#121212] p-6 rounded-lg shadow-lg w-full max-w-sm border border-gray-700">
+            <h2 className="text-xl text-white mb-4">Zahlung für {plan}</h2>
+            <div className="space-y-4">
+              <h3 className="text-lg text-white mb-2">Kreditkartendetails eingeben</h3>
+              {error && <p className="text-red-500 mb-4">{error}</p>}
+              <input
+                type="text"
+                placeholder="Kartennummer (16 Ziffern)"
+                value={cardNumber}
+                onChange={(e) => setCardNumber(e.target.value)}
+                className="w-full p-3 bg-[#1A1A1A] text-white rounded-lg border border-gray-600 focus:outline-none focus:border-[#00FFFF] transition"
+              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Ablaufdatum (MM/YY)"
+                  value={expiry}
+                  onChange={(e) => setExpiry(e.target.value)}
+                  className="w-1/2 p-3 bg-[#1A1A1A] text-white rounded-lg border border-gray-600 focus:outline-none focus:border-[#00FFFF] transition"
+                />
+                <input
+                  type="text"
+                  placeholder="CVC (3 Ziffern)"
+                  value={cvc}
+                  onChange={(e) => setCvc(e.target.value)}
+                  className="w-1/2 p-3 bg-[#1A1A1A] text-white rounded-lg border border-gray-600 focus:outline-none focus:border-[#00FFFF] transition"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={onClose}
+                className="py-2 px-4 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition"
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={handleCreditCardSubmit}
+                className="py-2 px-4 bg-[#00FFFF] text-black rounded-lg hover:bg-[#00CCCC] transition"
+              >
+                Bezahlen
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const Settings = ({ subscriptionType, onUpgrade }) => {
+      const [showPaymentModal, setShowPaymentModal] = React.useState(false);
+
+      const handleSubscribe = () => {
+        setShowPaymentModal(true);
+      };
+
+      const handlePaymentConfirm = () => {
+        onUpgrade('basic');
+      };
+
+      return (
+        <div className="bg-[#1A1A1A] p-6 rounded-lg shadow-lg border border-gray-700">
+          <h2 className="text-xl text-white mb-4">Einstellungen > Abo & Zahlungen</h2>
+          <p className="text-white mb-4">Aktuelles Abo: {subscriptionType ? 'Basis-Version' : 'Kein Abo'}</p>
+          {!subscriptionType && (
+            <button
+              onClick={handleSubscribe}
+              className="w-full py-2 bg-[#00FFFF] text-black rounded-lg hover:bg-[#00CCCC] transition"
+            >
+              Abo abschließen (10€/Monat)
+            </button>
+          )}
+          <PaymentModal
+            isOpen={showPaymentModal}
+            onClose={() => setShowPaymentModal(false)}
+            plan="basic"
+            onConfirm={handlePaymentConfirm}
+          />
+        </div>
+      );
+    };
+
+    const VideoAnalysis = () => {
+      const [url, setUrl] = React.useState('');
+      const [results, setResults] = React.useState(null);
+      const [error, setError] = React.useState('');
+
+      const handleAnalyze = () => {
+        setError('');
+        setResults(null);
+
+        const videoIdMatch = url.match(/(?:v=)([a-zA-Z0-9_-]{11})/);
+        if (!videoIdMatch) {
+          setError('Bitte eine gültige YouTube-Video-URL eingeben (z.B. https://www.youtube.com/watch?v=VIDEO_ID).');
+          return;
+        }
+        const videoId = videoIdMatch[1];
+
+        const YOUTUBE_API_KEY = 'YOUR_YOUTUBE_API_KEY_HERE';
+        console.log('Fetching video stats with API Key:', YOUTUBE_API_KEY);
+
+        setResults({
+          views: 12000,
+          likes: 12000,
+          comments: 500,
+          interactionRate: ((12000 + 500) / 12000 * 100).toFixed(1),
+        });
+      };
+
+      return (
+        <div className="bg-[#1A1A1A] p-6 rounded-lg shadow-lg border border-gray-700">
+          <h2 className="text-xl text-white mb-4">Videoanalyse</h2>
+          <input
+            type="text"
+            placeholder="YouTube-Video-Link (z.B. https://www.youtube.com/watch?v=VIDEO_ID)"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            className="w-full p-3 mb-4 bg-[#121212] text-white rounded-lg border border-gray-600 focus:outline-none focus:border-[#00FFFF] transition"
+          />
+          <button
+            onClick={handleAnalyze}
+            className="w-full py-2 bg-[#00FFFF] text-black rounded-lg hover:bg-[#00CCCC] transition"
+          >
+            Analyse starten
+          </button>
+          {error && <p className="text-red-500 mt-4">{error}</p>}
+          {results && (
+            <div className="text-white mt-4">
+              <p>Views: {results.views}</p>
+              <p>Likes: {results.likes}</p>
+              <p>Kommentare: {results.comments}</p>
+              <p>Interaktionsrate: {results.interactionRate}%</p>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const ChannelAnalysis = () => {
+      const [url, setUrl] = React.useState('');
+      const [results, setResults] = React.useState(null);
+      const [error, setError] = React.useState('');
+
+      const handleAnalyze = () => {
+        setError('');
+        setResults(null);
+
+        const channelIdMatch = url.match(/(?:channel\/)([a-zA-Z0-9_-]+)/);
+        if (!channelIdMatch) {
+          setError('Bitte eine gültige YouTube-Kanal-URL eingeben (z.B. https://www.youtube.com/channel/CHANNEL_ID).');
+          return;
+        }
+        const channelId = channelIdMatch[1];
+
+        const YOUTUBE_API_KEY = 'YOUR_YOUTUBE_API_KEY_HERE';
+        console.log('Fetching channel stats with API Key:', YOUTUBE_API_KEY);
+
+        setResults({
+          subscribers: 100000,
+          totalViews: 500000,
+          videoCount: 150,
+        });
+      };
+
+      return (
+        <div className="bg-[#1A1A1A] p-6 rounded-lg shadow-lg border border-gray-700">
+          <h2 className="text-xl text-white mb-4">Kanalanalyse starten</h2>
+          <input
+            type="text"
+            placeholder="YouTube-Kanal-URL (z.B. https://www.youtube.com/channel/CHANNEL_ID)"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            className="w-full p-3 mb-4 bg-[#121212] text-white rounded-lg border border-gray-600 focus:outline-none focus:border-[#00FFFF] transition"
+          />
+          <button
+            onClick={handleAnalyze}
+            className="w-full py-2 bg-[#00FFFF] text-black rounded-lg hover:bg-[#00CCCC] transition"
+          >
+            Analyse starten
+          </button>
+          {error && <p className="text-red-500 mt-4">{error}</p>}
+          {results && (
+            <div className="text-white mt-4">
+              <p>Abonnenten: {results.subscribers}</p>
+              <p>Gesamt-Views: {results.totalViews}</p>
+              <p>Anzahl Videos: {results.videoCount}</p>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const EarningsAnalysis = () => {
+      const [selectedOption, setSelectedOption] = React.useState('Einnahmen auswählen');
+      const [isOpen, setIsOpen] = React.useState(false);
+      const [results, setResults] = React.useState(null);
+      const [showTrendField, setShowTrendField] = React.useState(false);
+      const [showEarningsField, setShowEarningsField] = React.useState(false);
+      const [trendQuery, setTrendQuery] = React.useState('');
+      const [earningsUrl, setEarningsUrl] = React.useState('');
+      const [error, setError] = React.useState('');
+
+      const CPM = 2.5;
+
+      const options = ['Einnahmen auswählen', 'Vorhersage, was im Hype ist'];
+
+      const handleSelect = (option) => {
+        setSelectedOption(option);
+        setIsOpen(false);
+        setResults(null);
+        setError('');
+        setShowTrendField(option === 'Vorhersage, was im Hype ist');
+        setShowEarningsField(option === 'Einnahmen auswählen');
+      };
+
+      const handleTrendAnalyze = () => {
+        if (!trendQuery) {
+          setError('Bitte ein Thema eingeben (z.B. GTA).');
+          return;
+        }
+
+        const YOUTUBE_API_KEY = 'YOUR_YOUTUBE_API_KEY_HERE';
+        console.log('Fetching trending videos with API Key:', YOUTUBE_API_KEY);
+
+        let videos;
+        if (trendQuery.toLowerCase().includes('gta')) {
+          videos = ['GTA 6 Leaks', 'GTA Modding Trends', 'GTA Online Updates'];
+        } else if (trendQuery.toLowerCase().includes('minecraft')) {
+          videos = ['Minecraft Updates', 'Minecraft Mods', 'Minecraft Speedruns'];
+        } else if (trendQuery.toLowerCase().includes('call of duty')) {
+          videos = ['Call of Duty Warzone', 'CoD New Maps', 'CoD Esports'];
+        } else {
+          videos = ['Gaming Trends', 'Tech Innovations', 'Viral Challenges'];
+        }
+        setResults({ videos });
+        setError('');
+      };
+
+      const handleEarningsAnalyze = () => {
+        setError('');
+        setResults(null);
+
+        const channelIdMatch = earningsUrl.match(/(?:channel\/)([a-zA-Z0-9_-]+)/);
+        if (!channelIdMatch) {
+          setError('Bitte eine gültige YouTube-Kanal-URL eingeben (z.B. https://www.youtube.com/channel/CHANNEL_ID).');
+          return;
+        }
+
+        const YOUTUBE_API_KEY = 'YOUR_YOUTUBE_API_KEY_HERE';
+        console.log('Fetching earnings data with API Key:', YOUTUBE_API_KEY);
+
+        const totalViews = 500000;
+        const estimatedIncome = (totalViews / 1000) * CPM;
+        setResults({ earnings: `${estimatedIncome.toFixed(2)} € (geschätzt)` });
+      };
+
+      return (
+        <div className="bg-[#1A1A1A] p-6 rounded-lg shadow-lg border border-gray-700 relative">
+          <h2 className="text-xl text-white mb-4">Einnahmen analysieren</h2>
+          <div className="relative mb-4">
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              className="w-full p-3 bg-[#121212] text-white rounded-lg border border-gray-600 flex justify-between items-center"
+            >
+              {selectedOption}
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </button>
+            {isOpen && (
+              <div className="absolute w-full mt-1 bg-[#121212] border border-gray-600 rounded-lg z-10">
+                {options.map((option) => (
+                  <button
+                    key={option}
+                    onClick={() => handleSelect(option)}
+                    className="w-full p-3 text-white hover:bg-[#1A1A1A] text-left"
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {showEarningsField && (
+            <div className="mb-4">
+              <input
+                type="text"
+                placeholder="YouTube-Kanal-URL (z.B. https://www.youtube.com/channel/CHANNEL_ID)"
+                value={earningsUrl}
+                onChange={(e) => setEarningsUrl(e.target.value)}
+                className="w-full p-3 bg-[#121212] text-white rounded-lg border border-gray-600 focus:outline-none focus:border-[#00FFFF] transition"
+              />
+              <button
+                onClick={handleEarningsAnalyze}
+                className="w-full py-2 bg-[#00FFFF] text-black rounded-lg hover:bg-[#00CCCC] transition mt-4"
+              >
+                Einnahmen analysieren
+              </button>
+            </div>
+          )}
+          {showTrendField && (
+            <div className="mb-4">
+              <input
+                type="text"
+                placeholder="Thema eingeben (z.B. GTA, Minecraft, Call of Duty)"
+                value={trendQuery}
+                onChange={(e) => setTrendQuery(e.target.value)}
+                className="w-full p-3 bg-[#121212] text-white rounded-lg border border-gray-600 focus:outline-none focus:border-[#00FFFF] transition"
+              />
+              <button
+                onClick={handleTrendAnalyze}
+                className="w-full py-2 bg-[#00FFFF] text-black rounded-lg hover:bg-[#00CCCC] transition mt-4"
+              >
+                Trends analysieren
+              </button>
+            </div>
+          )}
+          {error && <p className="text-red-500 mt-4">{error}</p>}
+          {results && selectedOption === 'Einnahmen auswählen' && (
+            <div className="text-white mt-4">
+              <p>Einnahmenschätzung: {results.earnings}</p>
+            </div>
+          )}
+          {results && selectedOption === 'Vorhersage, was im Hype ist' && (
+            <div className="bg-[#121212] p-4 rounded-lg mt-4 text-white">
+              <h3 className="text-lg mb-2">Aktuelle Trendvideos</h3>
+              <ul className="list-disc pl-5">
+                {results.videos.map((video, index) => (
+                  <li key={index}>{video}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const AdditionalTools = () => {
+      const [hashtagQuery, setHashtagQuery] = React.useState('');
+      const [hashtagResults, setHashtagResults] = React.useState(null);
+      const [hypeQuery, setHypeQuery] = React.useState('');
+      const [hypeResults, setHypeResults] = React.useState(null);
+      const [trendQuery, setTrendQuery] = React.useState('');
+      const [trendResults, setTrendResults] = React.useState(null);
+      const [hashtagError, setHashtagError] = React.useState('');
+
+      const handleHashtagAnalyze = () => {
+        setHashtagError('');
+        setHashtagResults(null);
+
+        if (!hashtagQuery.trim()) {
+          setHashtagError('Bitte ein Hashtag oder Thema eingeben.');
+          return;
+        }
+
+        const YOUTUBE_API_KEY = 'YOUR_YOUTUBE_API_KEY_HERE';
+        console.log('Fetching hashtag trends with API Key:', YOUTUBE_API_KEY);
+
+        const formattedInput = hashtagQuery.trim().replace(/\s+/g, '');
+        const hashtags = [
+          `#${formattedInput}`,
+          `#${formattedInput}Trend`,
+          `#${formattedInput}Hype`
+        ];
+        setHashtagResults(hashtags);
+      };
+
+      const handleHypeAnalyze = () => {
+        const YOUTUBE_API_KEY = 'YOUR_YOUTUBE_API_KEY_HERE';
+        console.log('Fetching hype trends with API Key:', YOUTUBE_API_KEY);
+
+        if (hypeQuery.toLowerCase().includes('gta')) {
+          setHypeResults(['GTA 6 Leaks', 'GTA Modding Trends']);
+        } else if (hypeQuery.toLowerCase().includes('fortnite')) {
+          setHypeResults(['Fortnite Chapter 6', 'New Skins Hype']);
+        } else {
+          setHypeResults(['Minecraft Updates', 'AI Art Trends']);
+        }
+      };
+
+      const handleTrendAnalyze = () => {
+        const YOUTUBE_API_KEY = 'YOUR_YOUTUBE_API_KEY_HERE';
+        console.log('Fetching trending topics with API Key:', YOUTUBE_API_KEY);
+
+        if (trendQuery.toLowerCase().includes('gta')) {
+          setTrendResults(['GTA 6 Leaks', 'GTA Modding Trends', 'GTA Online Updates']);
+        } else if (trendQuery.toLowerCase().includes('minecraft')) {
+          setTrendResults(['Minecraft Updates', 'Minecraft Mods', 'Minecraft Speedruns']);
+        } else if (trendQuery.toLowerCase().includes('call of duty')) {
+          setTrendResults(['Call of Duty Warzone', 'CoD New Maps', 'CoD Esports']);
+        } else {
+          setTrendResults(['Gaming Trends', 'Tech Innovations', 'Viral Challenges']);
+        }
+      };
+
+      return (
+        <div className="bg-[#1A1A1A] p-6 rounded-lg shadow-lg border border-gray-700">
+          <h2 className="text-xl text-white mb-4">Weitere Tools</h2>
+          <div className="space-y-6">
+            <div>
+              <p className="text-white mb-2">Trendsuche / Hashtag-Analyse</p>
+              <input
+                type="text"
+                placeholder="Hashtag oder Thema eingeben (z.B. Minecraft)"
+                value={hashtagQuery}
+                onChange={(e) => setHashtagQuery(e.target.value)}
+                className="w-full p-2 bg-[#121212] text-white rounded-lg border border-gray-600 focus:outline-none focus:border-[#00FFFF] transition"
+              />
+              <button
+                onClick={handleHashtagAnalyze}
+                className="w-full py-2 bg-[#00FFFF] text-black rounded-lg hover:bg-[#00CCCC] transition mt-4"
+              >
+                Analysieren
+              </button>
+              {hashtagError && <p className="text-red-500 mt-4">{hashtagError}</p>}
+              {hashtagResults && (
+                <div className="text-white mt-4">
+                  <p>Hashtags:</p>
+                  <ul className="list-disc pl-5">
+                    {hashtagResults.map((hashtag, index) => (
+                      <li key={index}>{hashtag}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <div>
+              <p className="text-white mb-2">Hype-Analyse</p>
+              <input
+                type="text"
+                placeholder="Thema eingeben (z.B. GTA)"
+                value={hypeQuery}
+                onChange={(e) => setHypeQuery(e.target.value)}
+                className="w-full p-2 bg-[#121212] text-white rounded-lg border border-gray-600 focus:outline-none focus:border-[#00FFFF] transition"
+              />
+              <button
+                onClick={handleHypeAnalyze}
+                className="w-full py-2 bg-[#00FFFF] text-black rounded-lg hover:bg-[#00CCCC] transition mt-4"
+              >
+                Analysieren
+              </button>
+              {hypeResults && (
+                <div className="text-white mt-4">
+                  <p>Hype auf YouTube:</p>
+                  <ul className="list-disc pl-5">
+                    {hypeResults.map((result, index) => (
+                      <li key={index}>{result}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <div>
+              <p className="text-white mb-2">Trendsuche</p>
+              <input
+                type="text"
+                placeholder="Thema eingeben (z.B. GTA, Minecraft, Call of Duty)"
+                value={trendQuery}
+                onChange={(e) => setTrendQuery(e.target.value)}
+                className="w-full p-2 bg-[#121212] text-white rounded-lg border border-gray-600 focus:outline-none focus:border-[#00FFFF] transition"
+              />
+              <button
+                onClick={handleTrendAnalyze}
+                className="w-full py-2 bg-[#00FFFF] text-black rounded-lg hover:bg-[#00CCCC] transition mt-4"
+              >
+                Analysieren
+              </button>
+              {trendResults && (
+                <div className="text-white mt-4">
+                  <p>Trends auf YouTube:</p>
+                  <ul className="list-disc pl-5">
+                    {trendResults.map((trend, index) => (
+                      <li key={index}>{trend}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    const Dashboard = ({ email, onLogout, subscriptionType, onUpgrade }) => {
+      const [showSubscriptionModal, setShowSubscriptionModal] = React.useState(false);
+      const [showTutorialModal, setShowTutorialModal] = React.useState(false);
+
+      const welcomeMessage = email === 'guest@example.com' ? 'Willkommen, Gast!' : `Willkommen, ${email}!`;
+
+      return (
+        <div className="min-h-screen bg-[#121212] p-8">
+          <div className="max-w-6xl mx-auto">
+            <div className="flex justify-between items-center mb-8">
+              <h1 className="text-3xl text-white">TubeStats Dashboard</h1>
+              <div className="flex items-center gap-4">
+                <p className="text-white">{welcomeMessage}</p>
+                <button
+                  onClick={() => setShowSubscriptionModal(true)}
+                  className="text-white hover:text-[#00FFFF] transition"
+                  title="Abo auswählen"
+                >
+                  <svg className="w-6 h-6 rounded-full bg-[#1A1A1A] p-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 1.343-3 3v2h6v-2c0-1.657-1.343-3-3-3zm0-4a7 7 0 00-7 7v2a7 7 0 007 7 7 7 0 007-7v-2a7 7 0 00-7-7z"></path>
+                  </svg>
+                </button>
+                <button
+                  onClick={onLogout}
+                  className="text-white hover:text-[#FF00FF] transition"
+                  title="Abmelden"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="mb-8 bg-[#1A1A1A] p-6 rounded-lg shadow-lg border border-gray-700">
+              <h2 className="text-2xl text-white mb-4">Erfahre, wie TubeStats deinen YouTube-Kanal optimiert!</h2>
+              <p className="text-gray-300 mb-4">Schau dir unser Tutorial-Video an und entdecke, warum TubeStats das perfekte Tool für deine YouTube-Analysen ist!</p>
+              <button
+                onClick={() => setShowTutorialModal(true)}
+                className="py-2 px-4 bg-[#00FFFF] text-black rounded-lg hover:bg-[#00CCCC] transition"
+              >
+                Tutorial-Video ansehen
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <VideoAnalysis />
+              <ChannelAnalysis />
+              <div className="md:col-span-2">
+                <EarningsAnalysis />
+              </div>
+              <div className="md:col-span-2">
+                <AdditionalTools />
+              </div>
+              <div className="md:col-span-2">
+                <Settings subscriptionType={subscriptionType} onUpgrade={onUpgrade} />
+              </div>
+            </div>
+          </div>
+          <SubscriptionModal
+            isOpen={showSubscriptionModal}
+            onClose={() => setShowSubscriptionModal(false)}
+            onSelect={onUpgrade}
+          />
+          <TutorialModal
+            isOpen={showTutorialModal}
+            onClose={() => setShowTutorialModal(false)}
+            onSubscribe={() => {
+              setShowTutorialModal(false);
+              setShowSubscriptionModal(true);
+            }}
+          />
+        </div>
+      );
+    };
+
+    const LoginCard = ({ onLogin }) => {
+      const [showLoginModal, setShowLoginModal] = React.useState(false);
+      const [showRegisterModal, setShowRegisterModal] = React.useState(false);
+
+      const handleGuestLogin = () => {
+        onLogin('guest@example.com');
+      };
+
+      return (
+        <div className="bg-[#121212] p-8 rounded-lg shadow-lg w-full max-w-md border border-gray-700">
+          <div className="text-center mb-6">
+            <h1 className="text-4xl font-semibold text-white">TubeStats</h1>
+          </div>
+          <div className="space-y-4">
+            <button
+              onClick={() => setShowLoginModal(true)}
+              className="w-full py-3 bg-[#00FFFF] text-black rounded-lg hover:bg-[#00CCCC] transition"
+            >
+              Mit E-Mail anmelden
+            </button>
+            <button
+              onClick={() => setShowRegisterModal(true)}
+              className="w-full py-3 bg-[#FF00FF] text-white rounded-lg hover:bg-[#CC00CC] transition"
+            >
+              Konto erstellen
+            </button>
+            <button
+              onClick={handleGuestLogin}
+              className="w-full py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-500 transition"
+            >
+              Als Gast fortfahren
+            </button>
+          </div>
+
+          <LoginModal
+            isOpen={showLoginModal}
+            onClose={() => setShowLoginModal(false)}
+            onSubmit={onLogin}
+            type="login"
+          />
+          <LoginModal
+            isOpen={showRegisterModal}
+            onClose={() => setShowRegisterModal(false)}
+            onSubmit={onLogin}
+            type="register"
+          />
+        </div>
+      );
+    };
+
+    const App = () => {
+      const [isLoggedIn, setIsLoggedIn] = React.useState(false);
+      const [email, setEmail] = React.useState('');
+      const [subscriptionType, setSubscriptionType] = React.useState(null);
+
+      const handleLogin = (userEmail) => {
+        setEmail(userEmail);
+        setIsLoggedIn(true);
+      };
+
+      const handleLogout = () => {
+        setEmail('');
+        setIsLoggedIn(false);
+        setSubscriptionType(null);
+      };
+
+      const handleUpgrade = (plan) => {
+        setSubscriptionType(plan);
+      };
+
+      return (
+        <div className="min-h-screen">
+          {isLoggedIn ? (
+            <Dashboard
+              email={email}
+              onLogout={handleLogout}
+              subscriptionType={subscriptionType}
+              onUpgrade={handleUpgrade}
+            />
+          ) : (
+            <div className="flex items-center justify-center min-h-screen">
+              <LoginCard onLogin={handleLogin} />
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
